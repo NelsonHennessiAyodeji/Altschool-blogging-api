@@ -27,13 +27,34 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/blogs", require("./routes/blogs"));
 
-// // Health check route
-// app.get("/health", (req, res) => {
-//   res.status(200).json({
-//     status: "success",
-//     message: "Server is running healthy",
-//   });
-// });
+// // Main route
+app.get("/", (req, res) => {
+  res.status(200).json({
+    status: "success",
+    message: `Server is running healthy, you can use this API: 
+    
+   API Endpoints: 
+
+   
+Authentication
+POST /api/auth/signup - User registration
+
+POST /api/auth/login - User login
+
+Blogs
+GET /api/blogs - Get all published blogs (public)
+
+GET /api/blogs/:id - Get single blog (public)
+
+POST /api/blogs - Create blog (prtected)
+
+PUT /api/blogs/:id - Update blog (protected, owner only)
+
+DELETE /api/blogs/:id - Delete blog (protected, oner only)
+
+GET /api/blogs/user/my-blogs - Get user's blogs (protected`,
+  });
+});
 
 // Handle undefined routes
 app.use((req, res) => {
