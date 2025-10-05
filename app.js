@@ -29,9 +29,7 @@ app.use("/api/blogs", require("./routes/blogs"));
 
 // // Main route
 app.get("/", (req, res) => {
-  res.status(200).json({
-    status: "success",
-    message: `Server is running healthy, you can use this API: 
+  res.status(200).send(`Server is running healthy, you can use this API: 
     
    API Endpoints: 
 
@@ -52,8 +50,7 @@ PUT /api/blogs/:id - Update blog (protected, owner only)
 
 DELETE /api/blogs/:id - Delete blog (protected, oner only)
 
-GET /api/blogs/user/my-blogs - Get user's blogs (protected`,
-  });
+GET /api/blogs/user/my-blogs - Get user's blogs (protected`);
 });
 
 // Handle undefined routes
