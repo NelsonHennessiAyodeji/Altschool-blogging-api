@@ -1,9 +1,16 @@
 const mongoose = require("mongoose");
 
 const calculateReadingTime = (text) => {
+  if (!text) return 1;
+
   const wordsPerMinute = 200; // Average reading speed
-  const wordCount = text.split(/\s+/).length;
-  return Math.ceil(wordCount / wordsPerMinute);
+  const cleanText = text.replace(/<[^>]*>/g, "");
+  const wordCount = cleanText
+    .split(/\s+/)
+    .filter((word) => word.length > 0).length;
+
+  const readingTime = Math.ceil(wordCount / wordsPerMinute);
+  return readingTime < 1 ? 1 : readingTime; // Minimum 1 minute
 };
 
 const blogSchema = new mongoose.Schema(
@@ -37,6 +44,7 @@ const blogSchema = new mongoose.Schema(
     reading_time: {
       type: Number,
       required: true,
+      min: 1,
     },
     tags: [
       {

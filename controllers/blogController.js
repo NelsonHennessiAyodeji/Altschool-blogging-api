@@ -1,16 +1,33 @@
 const Blog = require("../models/Blog");
+const mongoose = require("mongoose");
+
+// Enhanced reading time calculation function
+const calculateReadingTime = (text) => {
+  if (!text) return 1;
+
+  const wordsPerMinute = 200;
+  const cleanText = text.replace(/<[^>]*>/g, "");
+  const wordCount = cleanText
+    .split(/\s+/)
+    .filter((word) => word.length > 0).length;
+
+  const readingTime = Math.ceil(wordCount / wordsPerMinute);
+  return readingTime < 1 ? 1 : readingTime;
+};
 
 exports.createBlog = async (req, res) => {
   try {
+    const readingTime = calculateReadingTime(req.body.body);
+
     const blogData = {
       ...req.body,
       author: req.user._id,
+      reading_time: readingTime,
     };
 
     const blog = new Blog(blogData);
     await blog.save();
 
-    // Populate author details
     await blog.populate("author", "first_name last_name email");
 
     res.status(201).json({
@@ -43,38 +60,49 @@ exports.getBlogs = async (req, res) => {
       order = "desc",
     } = req.query;
 
-    const query = { state: "published" }; // Only show published blogs to public
+    let query = {};
 
-    // Filter by state if user is authenticated and requesting their own blogs
-    if (req.user && state) {
+    // If user is authenticated and requesting specific state or their blogs
+    if (req.user) {
       if (state === "my-blogs") {
         query.author = req.user._id;
-      } else {
+      } else if (state) {
         query.state = state;
         query.author = req.user._id;
+      } else {
+        // Authenticated users see published blogs by default
+        query.state = "published";
       }
+    } else {
+      // Public users only see published blogs
+      query.state = "published";
     }
 
-    // Search functionality - FIXED VERSION
+    // Search functionality
     if (search) {
       query.$or = [
         { title: { $regex: search, $options: "i" } },
         { tags: { $in: [new RegExp(search, "i")] } },
+        { description: { $regex: search, $options: "i" } },
       ];
     }
 
     const sortOptions = {};
     sortOptions[orderBy] = order === "desc" ? -1 : 1;
 
-    // Build the query for population
-    let blogQuery = Blog.find(query)
+    console.log("Query:", query);
+    console.log("Sort Options:", sortOptions);
+
+    const blogs = await Blog.find(query)
       .populate("author", "first_name last_name email")
       .sort(sortOptions)
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .limit(parseInt(limit))
+      .skip((parseInt(page) - 1) * parseInt(limit))
+      .lean(); // Use lean() for better performance, so I heard
 
-    const blogs = await blogQuery;
     const total = await Blog.countDocuments(query);
+
+    console.log("Found blogs:", blogs.length);
 
     res.json({
       status: "success",
@@ -86,6 +114,7 @@ exports.getBlogs = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("Get blogs error:", error);
     res.status(500).json({
       status: "error",
       message: error.message,
@@ -95,6 +124,13 @@ exports.getBlogs = async (req, res) => {
 
 exports.getBlog = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid blog ID format",
+      });
+    }
+
     const blog = await Blog.findById(req.params.id).populate(
       "author",
       "first_name last_name email bio"
@@ -115,6 +151,7 @@ exports.getBlog = async (req, res) => {
       data: { blog },
     });
   } catch (error) {
+    console.error("Get blog error:", error);
     res.status(500).json({
       status: "error",
       message: error.message,
@@ -124,6 +161,13 @@ exports.getBlog = async (req, res) => {
 
 exports.updateBlog = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid blog ID format",
+      });
+    }
+
     const blog = await Blog.findById(req.params.id);
 
     if (!blog) {
@@ -141,10 +185,17 @@ exports.updateBlog = async (req, res) => {
       });
     }
 
-    const updatedBlog = await Blog.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    }).populate("author", "first_name last_name email");
+    // If body is being updated, recalculate reading time
+    const updateData = { ...req.body };
+    if (req.body.body) {
+      updateData.reading_time = calculateReadingTime(req.body.body);
+    }
+
+    const updatedBlog = await Blog.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }
+    ).populate("author", "first_name last_name email");
 
     res.json({
       status: "success",
@@ -158,6 +209,7 @@ exports.updateBlog = async (req, res) => {
         message: "Blog title already exists",
       });
     }
+    console.error("Update blog error:", error);
     res.status(500).json({
       status: "error",
       message: error.message,
@@ -167,12 +219,22 @@ exports.updateBlog = async (req, res) => {
 
 exports.deleteBlog = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid blog ID format",
+      });
+    }
+
     const blog = await Blog.findById(req.params.id);
+
+    console.log("Looking for blog with ID:", req.params.id);
+    console.log("Found blog:", blog);
 
     if (!blog) {
       return res.status(404).json({
         status: "error",
-        message: "Blog not found",
+        message: "Blog not found with the provided ID",
       });
     }
 
@@ -184,13 +246,23 @@ exports.deleteBlog = async (req, res) => {
       });
     }
 
-    await Blog.findByIdAndDelete(req.params.id);
+    const result = await Blog.deleteOne({ _id: req.params.id });
+
+    console.log("Delete result:", result);
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Blog not found or already deleted",
+      });
+    }
 
     res.json({
       status: "success",
       message: "Blog deleted successfully",
     });
   } catch (error) {
+    console.error("Delete blog error:", error);
     res.status(500).json({
       status: "error",
       message: error.message,
@@ -209,7 +281,9 @@ exports.getMyBlogs = async (req, res) => {
     } = req.query;
 
     const query = { author: req.user._id };
-    if (state) query.state = state;
+    if (state && state !== "my-blogs") {
+      query.state = state;
+    }
 
     const sortOptions = {};
     sortOptions[orderBy] = order === "desc" ? -1 : 1;
@@ -217,8 +291,8 @@ exports.getMyBlogs = async (req, res) => {
     const blogs = await Blog.find(query)
       .populate("author", "first_name last_name email")
       .sort(sortOptions)
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .limit(parseInt(limit))
+      .skip((parseInt(page) - 1) * parseInt(limit));
 
     const total = await Blog.countDocuments(query);
 
@@ -232,6 +306,7 @@ exports.getMyBlogs = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("Get my blogs error:", error);
     res.status(500).json({
       status: "error",
       message: error.message,

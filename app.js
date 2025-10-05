@@ -27,13 +27,13 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/blogs", require("./routes/blogs"));
 
-// Health check route
-app.get("/health", (req, res) => {
-  res.status(200).json({
-    status: "success",
-    message: "Server is running healthy",
-  });
-});
+// // Health check route
+// app.get("/health", (req, res) => {
+//   res.status(200).json({
+//     status: "success",
+//     message: "Server is running healthy",
+//   });
+// });
 
 // Handle undefined routes
 app.use((req, res) => {
